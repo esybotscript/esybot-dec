@@ -1,5 +1,5 @@
 #!/usr/bin/env python3
-# esybot_simple.py - Версия с улучшенным Python синтаксисом
+# esybot_simple.py - Исправленная версия с фиксом клавиатур
 
 import asyncio
 import sys
@@ -187,8 +187,11 @@ class SimpleBotAdvanced:
             return False
     
     def create_keyboard(self, section, context={}):
-        """Создание клавиатуры из секции"""
+        """Создание клавиатуры из секции - ИСПРАВЛЕНА ОШИБКА"""
         builder = InlineKeyboardBuilder()
+        
+        # Считаем количество кнопок
+        button_count = 0
         
         for key, value in section.items():
             if key.startswith('button'):
@@ -199,11 +202,14 @@ class SimpleBotAdvanced:
                 if len(parts) == 2:
                     text, callback = parts[0].strip(), parts[1].strip()
                     builder.button(text=text, callback_data=callback)
+                    button_count += 1
                 elif len(parts) == 1:
                     text = parts[0].strip()
                     builder.button(text=text, callback_data=f"btn_{key}")
+                    button_count += 1
         
-        return builder.as_markup() if len(builder.buttons) > 0 else None
+        # ИСПРАВЛЕНО: используем button_count вместо len(builder.buttons)
+        return builder.as_markup() if button_count > 0 else None
     
     def process_effects(self, section, context={}):
         """Обработка эффектов секции"""
@@ -256,8 +262,9 @@ class SimpleBotAdvanced:
         }
     
     def create_else_keyboard(self, section, context={}):
-        """Создание клавиатуры для else ветки"""
+        """Создание клавиатуры для else ветки - ИСПРАВЛЕНА ОШИБКА"""
         builder = InlineKeyboardBuilder()
+        button_count = 0
         
         for key, value in section.items():
             if key.startswith('else_button'):
@@ -266,8 +273,10 @@ class SimpleBotAdvanced:
                 if len(parts) == 2:
                     text, callback = parts[0].strip(), parts[1].strip()
                     builder.button(text=text, callback_data=callback)
+                    button_count += 1
         
-        return builder.as_markup() if len(builder.buttons) > 0 else None
+        # ИСПРАВЛЕНО: используем button_count вместо len(builder.buttons)
+        return builder.as_markup() if button_count > 0 else None
         
     async def run(self):
         """Запуск бота"""
@@ -311,7 +320,44 @@ class SimpleBotAdvanced:
                         await query.message.edit_text(result['text'], reply_markup=result['keyboard'])
                         await query.answer(result['reply'])
         
-        # Остальные обработчики (медиа, сообщения) остаются без изменений...
+        # Обработка медиа
+        if 'PHOTO' in self.config:
+            @dp.message(F.content_type == ContentType.PHOTO)
+            async def photo_handler(message: Message):
+                context = get_context(message)
+                result = self.process_effects(self.config['PHOTO'], context)
+                if result:
+                    await message.answer(result['text'], reply_markup=result['keyboard'])
+        
+        if 'DOCUMENT' in self.config:
+            @dp.message(F.content_type == ContentType.DOCUMENT)
+            async def document_handler(message: Message):
+                context = get_context(message)
+                result = self.process_effects(self.config['DOCUMENT'], context)
+                if result:
+                    await message.answer(result['text'], reply_markup=result['keyboard'])
+        
+        if 'VOICE' in self.config:
+            @dp.message(F.content_type == ContentType.VOICE)
+            async def voice_handler(message: Message):
+                context = get_context(message)
+                result = self.process_effects(self.config['VOICE'], context)
+                if result:
+                    await message.answer(result['text'], reply_markup=result['keyboard'])
+        
+        # Обработка текстовых сообщений
+        if 'MESSAGE' in self.config:
+            @dp.message(F.text)
+            async def message_handler(message: Message):
+                # Пропускаем команды
+                if message.text.startswith('/'):
+                    return
+                    
+                context = get_context(message)
+                context['text'] = message.text
+                result = self.process_effects(self.config['MESSAGE'], context)
+                if result:
+                    await message.answer(result['text'], reply_markup=result['keyboard'])
         
         print(f"🚀 {self.config.get('BOT', {}).get('name', 'Simple Bot')} запущен!")
         await dp.start_polling(bot)
